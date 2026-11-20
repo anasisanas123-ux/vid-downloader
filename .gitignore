@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Portable ffmpeg (165 MB each, over GitHub's limit) - setup.bat downloads it
+bin/
+
+# Your media and logs
+downloads/
+clips/
+app.log
+*.part

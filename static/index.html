@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vid Downloader & Cutter</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #111318; --panel: #1a1d24; --panel2: #22262f; --border: #2e333d;
+    --text: #e6e8ec; --muted: #8b919c; --accent: #4f8cff; --ok: #3fb97c; --err: #ef5b5b; --warn: #f0b03f;
+    --seg: rgba(79,140,255,.35); --seg-sel: rgba(240,176,63,.45);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.4 system-ui, Segoe UI, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 10px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  main { display: grid; grid-template-columns: 380px 1fr; gap: 14px; padding: 14px; height: calc(100vh - 47px); }
+  .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .card h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .scroll { overflow: auto; min-height: 0; flex: 1; }
+  input, select, button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; }
+  input:focus, select:focus { outline: 1px solid var(--accent); }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.small { padding: 2px 7px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row > .grow { flex: 1; min-width: 0; }
+  label.chk { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin: 8px 0 4px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .job { border-top: 1px solid var(--border); padding: 8px 0; }
+  .job:first-child { border-top: 0; }
+  .job .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar { height: 5px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin: 5px 0; }
+  .bar > div { height: 100%; background: var(--accent); transition: width .3s; }
+  .st-done .bar > div { background: var(--ok); } .st-error .bar > div { background: var(--err); }
+  .err { color: var(--err); font-size: 12px; word-break: break-word; }
+  .file { display: flex; gap: 6px; align-items: center; padding: 5px 4px; border-radius: 5px; cursor: pointer; }
+  .file:hover { background: var(--panel2); }
+  .file.active { background: #26324a; }
+  .file .n { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tag { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: var(--panel2); color: var(--muted); }
+  .tag.clips { color: var(--warn); }
+  video { width: 100%; max-height: 52vh; background: #000; border-radius: 6px; display: block; }
+  #empty { color: var(--muted); text-align: center; padding: 60px 0; }
+  #timeline { position: relative; height: 64px; background: var(--panel2); border-radius: 6px; margin-top: 10px; cursor: crosshair; user-select: none; overflow: hidden; }
+  #timeline .tick { position: absolute; top: 0; height: 100%; border-left: 1px solid #343a46; font-size: 10px; color: var(--muted); padding-left: 3px; pointer-events: none; }
+  #timeline .seg { position: absolute; top: 18px; bottom: 6px; background: var(--seg); border: 1px solid var(--accent); border-radius: 3px; pointer-events: none; }
+  #timeline .seg.sel { background: var(--seg-sel); border-color: var(--warn); }
+  #timeline .pending { position: absolute; top: 18px; bottom: 6px; background: rgba(63,185,124,.25); border: 1px dashed var(--ok); pointer-events: none; }
+  #timeline .mark { position: absolute; top: 14px; bottom: 0; width: 2px; background: var(--ok); pointer-events: none; }
+  #timeline .head { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; box-shadow: 0 0 4px #000; }
+  #overview { position: relative; height: 8px; background: var(--panel2); border-radius: 4px; margin-top: 6px; cursor: pointer; }
+  #overview .win { position: absolute; top: 0; bottom: 0; background: rgba(255,255,255,.18); border-radius: 4px; }
+  #overview .ohead { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; }
+  .timebox { font-variant-numeric: tabular-nums; font-family: ui-monospace, Consolas, monospace; }
+  table.segs { width: 100%; border-collapse: collapse; }
+  table.segs td { padding: 3px 4px; border-top: 1px solid var(--border); }
+  table.segs tr.sel td { background: #2f2a1c; }
+  table.segs input { width: 120px; font-family: ui-monospace, Consolas, monospace; padding: 3px 6px; }
+  kbd { background: var(--panel2); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
+  .part { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--border); }
+  .part .pl { flex: 1; min-width: 0; }
+  .part .bar { margin: 3px 0 0; }
+  .toast { position: fixed; bottom: 18px; right: 18px; background: var(--panel2); border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; max-width: 420px; }
+  .toast.err { border-color: var(--err); color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>⬇ Vid Downloader &amp; Cutter</h1>
+  <span class="muted">Downloads → <code>downloads/</code> · Clips → <code>clips/</code></span>
+  <span style="flex:1"></span>
+  <button class="small" id="quitBtn" title="Stop the app (it runs in the background)">⏻ Quit app</button>
+</header>
+<main>
+  <div class="col">
+    <!-- download form -->
+    <div class="card">
+      <h2>Download</h2>
+      <div class="row">
+        <input id="url" class="grow" placeholder="Paste a video / stream URL (YouTube, Twitch VOD, …)">
+      </div>
+      <div class="row" style="margin-top:8px">
+        <select id="quality" class="grow">
+          <option value="best">Best quality</option>
+          <option value="2160">≤ 2160p (4K)</option>
+          <option value="1440">≤ 1440p</option>
+          <option value="1080">≤ 1080p</option>
+          <option value="720">≤ 720p</option>
+          <option value="480">≤ 480p</option>
+          <option value="compat">Most compatible (H.264 MP4)</option>
+          <option value="audio">Audio only</option>
+        </select>
+        <button class="primary" id="dlBtn">Download</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="splitBtn" class="grow" title="For long videos: list the video as parts and download one part at a time">✂ Split into parts…</button>
+      </div>
+      <div id="partsPanel" hidden style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border)">
+        <div class="t" id="partsTitle" style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></div>
+        <div class="row" style="margin-top:6px">
+          <span class="muted">Part length</span>
+          <select id="partLen" class="grow">
+            <option value="900">15 min</option><option value="1800">30 min</option>
+            <option value="3600" selected>1 hour</option><option value="5400">1.5 hours</option>
+            <option value="7200">2 hours</option><option value="custom">Custom…</option>
+          </select>
+          <input id="partCustom" class="timebox" style="width:90px" placeholder="minutes" hidden>
+          <button class="small" id="partsClose" title="Close">✕</button>
+        </div>
+        <div id="partsList" style="margin-top:8px"></div>
+        <div class="muted" style="margin-top:4px">Each part uses the quality selected above and is saved as its own file. Adjacent parts may overlap by a few seconds at the joins (keyframes), so nothing is lost.</div>
+      </div>
+      <details>
+        <summary>Advanced options</summary>
+        <div class="muted" style="margin-bottom:4px">Download only a section of a long stream (saves time and disk space):</div>
+        <div class="row">
+          <input id="secStart" class="grow timebox" placeholder="start e.g. 1:02:00">
+          <input id="secEnd" class="grow timebox" placeholder="end e.g. 1:30:00">
+        </div>
+        <label class="chk" style="margin-top:6px"><input type="checkbox" id="secPrecise"> Frame-accurate section edges (re-encodes edges, slower)</label>
+        <label class="chk"><input type="checkbox" id="liveStart"> Live stream: record from the beginning (YouTube)</label>
+        <label class="chk"><input type="checkbox" id="playlist"> Download the whole playlist</label>
+        <div class="row" style="margin-top:6px">
+          <span class="muted">Use cookies from browser</span>
+          <select id="cookies" class="grow">
+            <option value="">None</option>
+            <option>firefox</option><option>chrome</option><option>edge</option><option>brave</option>
+          </select>
+        </div>
+        <div class="muted">Use cookies for members-only or age-restricted videos. Chrome and Edge must be closed while reading them.</div>
+      </details>
+    </div>
+
+    <!-- jobs -->
+    <div class="card" style="flex:1; display:flex; flex-direction:column; min-height:120px">
+      <h2>Jobs <button class="small" id="clearJobs">Clear finished</button></h2>
+      <div id="jobs" class="scroll"><div class="muted">No jobs yet.</div></div>
+    </div>
+
+    <!-- library -->
+    <div class="card" style="flex:1.2; display:flex; flex-direction:column; min-height:140px">
+      <h2>Library <button class="small" id="refreshFiles">↻</button></h2>
+      <div id="files" class="scroll"></div>
+    </div>
+  </div>
+
+  <!-- editor -->
+  <div class="col">
+    <div class="card scroll" id="editor">
+      <h2><span id="edTitle">Editor</span> <span class="muted" id="edInfo"></span></h2>
+      <div id="empty">Select a video from the Library to cut it.</div>
+      <div id="edBody" hidden>
+        <video id="video" controls preload="metadata"></video>
+        <div id="timeline"></div>
+        <div id="overview"><div class="win"></div><div class="ohead"></div></div>
+        <div class="row" style="margin-top:10px">
+          <span class="timebox" id="curTime" style="min-width:150px">0:00:00.000</span>
+          <button id="btnIn" title="Set start at playhead (I)">[ Set In <kbd>I</kbd></button>
+          <button id="btnOut" title="Set end at playhead (O)">Set Out ] <kbd>O</kbd></button>
+          <button id="btnAdd" class="primary" title="Add In→Out as a segment (A)">+ Add segment <kbd>A</kbd></button>
+          <span class="muted timebox" id="pendingLbl"></span>
+          <span class="grow"></span>
+          <button id="zoomFit" class="small" title="Show whole video">Fit</button>
+          <button id="zoomIn" class="small">＋</button>
+          <button id="zoomOut" class="small">－</button>
+        </div>
+        <div class="muted" style="margin-top:6px">
+          <kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> ±5s (<kbd>Shift</kbd> ±60s) · <kbd>,</kbd><kbd>.</kbd> frame step ·
+          <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> speed · Scroll on the timeline to zoom, drag to seek
+        </div>
+
+        <h2 style="margin-top:16px">Segments <span class="muted" id="segTotal"></span></h2>
+        <table class="segs"><tbody id="segRows"></tbody></table>
+        <div id="noSegs" class="muted">No segments yet. Set In and Out points, then press <b>Add segment</b>.</div>
+
+        <div class="row" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border)">
+          <label class="chk"><input type="radio" name="mode" value="fast" checked> <b>Fast</b>&nbsp;(lossless, instant, snaps to keyframes)</label>
+          <label class="chk"><input type="radio" name="mode" value="precise"> <b>Precise</b>&nbsp;(frame-accurate, re-encodes)</label>
+        </div>
+        <div class="row" style="margin-top:8px" id="preciseOpts" hidden>
+          <span class="muted">Quality</span>
+          <select id="crf"><option value="16">Very high (CRF 16)</option><option value="18" selected>High (CRF 18)</option><option value="23">Medium (CRF 23)</option><option value="28">Small file (CRF 28)</option></select>
+          <span class="muted">Speed</span>
+          <select id="preset"><option>ultrafast</option><option selected>veryfast</option><option>medium</option><option>slow</option></select>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label class="chk"><input type="checkbox" id="merge"> Join all segments into one file</label>
+          <input id="outName" class="grow" placeholder="Output name (optional)">
+          <button id="exportBtn" class="primary">Export clips</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (method, url, body) => {
+  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || r.statusText));
+  return data;
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function toast(msg, isErr) {
+  const d = document.createElement('div'); d.className = 'toast' + (isErr ? ' err' : ''); d.textContent = msg;
+  document.body.appendChild(d); setTimeout(() => d.remove(), isErr ? 7000 : 3000);
+}
+function fmt(t, ms = true) {
+  if (!isFinite(t)) t = 0;
+  const neg = t < 0; t = Math.abs(t);
+  const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = Math.floor(t % 60), f = Math.round((t % 1) * 1000) % 1000;
+  return (neg ? '-' : '') + `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` + (ms ? '.' + String(f).padStart(3, '0') : '');
+}
+function parseTime(str) {
+  str = String(str).trim(); if (!str) return null;
+  if (!/^[\d:.]+$/.test(str)) return NaN;
+  return str.split(':').reduce((acc, p) => acc * 60 + parseFloat(p || 0), 0);
+}
+const fmtSize = n => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (n >= 1024 && i < 4) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + ' ' + u[i]; };
+
+/* ---------------- downloads ---------------- */
+$('#dlBtn').onclick = async () => {
+  const url = $('#url').value.trim();
+  if (!url) return toast('Paste a URL first', true);
+  const ss = parseTime($('#secStart').value), se = parseTime($('#secEnd').value);
+  if (Number.isNaN(ss) || Number.isNaN(se)) return toast('Section times must look like 1:02:03', true);
+  try {
+    await api('POST', '/api/download', {
+      url, quality: $('#quality').value, section_start: ss, section_end: se,
+      precise_section: $('#secPrecise').checked, live_from_start: $('#liveStart').checked,
+      playlist: $('#playlist').checked, cookies_browser: $('#cookies').value || null,
+    });
+    $('#url').value = ''; pollJobs();
+  } catch (e) { toast(e.message, true); }
+};
+$('#url').addEventListener('keydown', e => { if (e.key === 'Enter') $('#dlBtn').click(); });
+
+/* ---------------- split into parts ---------------- */
+let partsInfo = null; // {url, title, duration}
+let jobCache = [];
+$('#splitBtn').onclick = async () => {
+  const url = $('#url').value.trim();
+  if (!url) return toast('Paste a URL first', true);
+  const b = $('#splitBtn'); b.disabled = true; b.textContent = 'Reading video info…';
+  try {
+    const info = await api('POST', '/api/info', { url, cookies_browser: $('#cookies').value || null });
+    if (info.is_live) throw new Error('This is a live stream that is still airing, so it has no fixed length yet. Use Download to record it.');
+    if (!info.duration) throw new Error("This site doesn't report the video's length, so it can't be split. Use Download, or set a section under Advanced options.");
+    partsInfo = { url, title: info.title, duration: info.duration };
+    $('#partsPanel').hidden = false; renderParts();
+  } catch (e) { toast(e.message, true); }
+  finally { b.disabled = false; b.textContent = '✂ Split into parts…'; }
+};
+$('#partsClose').onclick = () => { $('#partsPanel').hidden = true; partsInfo = null; };
+$('#partLen').onchange = () => { $('#partCustom').hidden = $('#partLen').value !== 'custom'; renderParts(); };
+$('#partCustom').oninput = renderParts;
+function partLength() {
+  if ($('#partLen').value !== 'custom') return +$('#partLen').value;
+  const m = parseFloat($('#partCustom').value); return m > 0 ? m * 60 : 3600;
+}
+function partList() {
+  const L = partLength(), D = partsInfo.duration, n = Math.max(1, Math.ceil(D / L - 0.001));
+  return Array.from({ length: n }, (_, i) => ({ i, n, start: i * L, end: Math.min(D, (i + 1) * L) }));
+}
+function partJob(p) { // newest job matching this part (jobs come sorted newest first)
+  return jobCache.find(j => j.kind === 'download' && j.url === partsInfo.url && j.section_start === p.start && j.section_end === p.end);
+}
+function renderParts() {
+  if (!partsInfo) return;
+  $('#partsTitle').textContent = `${partsInfo.title} · ${fmt(partsInfo.duration, false)}`;
+  const parts = partList();
+  $('#partsList').innerHTML = parts.map(p => {
+    const j = partJob(p);
+    const state = !j ? '' : j.status === 'running' ? `${j.progress.toFixed(0)}%` : j.status === 'queued' ? 'queued' : j.status === 'done' ? '✔ saved' : j.status;
+    const busy = j && ['queued', 'running'].includes(j.status);
+    return `<div class="part">
+      <div class="pl"><b>Part ${p.i + 1}</b> <span class="muted timebox">${fmt(p.start, false)} – ${fmt(p.end, false)}</span>
+        <span class="muted" style="float:right">${esc(state)}</span>
+        ${busy ? `<div class="bar"><div style="width:${j.progress}%"></div></div>` : ''}</div>
+      <button class="small" data-part="${p.i}" ${busy ? 'disabled' : ''}>${j && j.status === 'done' ? 'Again' : 'Download'}</button>
+    </div>`;
+  }).join('') + (parts.length > 1 ? `<div class="part" style="justify-content:flex-end"><button class="small" id="partsAll">Queue all parts</button></div>` : '');
+}
+async function downloadPart(p) {
+  await api('POST', '/api/download', {
+    url: partsInfo.url, quality: $('#quality').value, section_start: p.start, section_end: p.end,
+    part_label: `${p.i + 1} of ${p.n}`, cookies_browser: $('#cookies').value || null,
+  });
+}
+$('#partsList').onclick = async e => {
+  try {
+    if (e.target.id === 'partsAll') {
+      if (!confirm('Queue every part? Two parts download at a time.')) return;
+      for (const p of partList()) { const j = partJob(p); if (!j || !['queued', 'running', 'done'].includes(j.status)) await downloadPart(p); }
+    } else {
+      const b = e.target.closest('button[data-part]'); if (!b) return;
+      await downloadPart(partList()[+b.dataset.part]);
+    }
+    pollJobs();
+  } catch (err) { toast(err.message, true); }
+};
+
+let lastDone = new Set();
+async function pollJobs() {
+  let jobs;
+  try { jobs = await api('GET', '/api/jobs'); } catch { return; }
+  jobCache = jobs; renderParts();
+  const box = $('#jobs');
+  if (!jobs.length) box.innerHTML = '<div class="muted">No jobs yet.</div>';
+  else box.innerHTML = jobs.map(j => `
+    <div class="job st-${j.status}">
+      <div class="t" title="${esc(j.url || j.title)}">${j.kind === 'cut' ? '✂ ' : '⬇ '}${esc(j.title)}</div>
+      <div class="bar"><div style="width:${j.progress.toFixed(1)}%"></div></div>
+      <div class="row" style="justify-content:space-between">
+        <span class="muted">${esc(j.status)}${j.status === 'running' ? ' · ' + j.progress.toFixed(1) + '%' : ''} ${j.detail ? '· ' + esc(j.detail) : ''}</span>
+        <span>
+          ${['queued', 'running'].includes(j.status) ? `<button class="small" data-act="cancel" data-id="${j.id}">Cancel</button>` : ''}
+          ${['error', 'cancelled'].includes(j.status) ? `<button class="small" data-act="retry" data-id="${j.id}">${j.kind === 'download' ? 'Resume' : 'Retry'}</button>` : ''}
+          ${!['queued', 'running'].includes(j.status) ? `<button class="small" data-act="remove" data-id="${j.id}">✕</button>` : ''}
+        </span>
+      </div>
+      ${j.error ? `<div class="err">${esc(j.error)}</div>` : ''}
+    </div>`).join('');
+  const done = new Set(jobs.filter(j => j.status === 'done').map(j => j.id));
+  for (const id of done) if (!lastDone.has(id)) { loadFiles(); const j = jobs.find(x => x.id === id); toast('Finished: ' + (j.output.join(', ') || j.title)); }
+  lastDone = done;
+}
+$('#jobs').onclick = async e => {
+  const b = e.target.closest('button[data-act]'); if (!b) return;
+  const { act, id } = b.dataset;
+  try {
+    if (act === 'remove') await api('DELETE', `/api/jobs/${id}`);
+    else await api('POST', `/api/jobs/${id}/${act}`);
+    pollJobs();
+  } catch (err) { toast(err.message, true); }
+};
+$('#clearJobs').onclick = async () => {
+  const jobs = await api('GET', '/api/jobs');
+  await Promise.all(jobs.filter(j => !['queued', 'running'].includes(j.status)).map(j => api('DELETE', `/api/jobs/${j.id}`)));
+  pollJobs();
+};
+setInterval(pollJobs, 1000); pollJobs();
+
+/* ---------------- library ---------------- */
+let current = null; // {folder, name}
+async function loadFiles() {
+  const files = await api('GET', '/api/files');
+  $('#files').innerHTML = files.length ? files.map(f => `
+    <div class="file ${current && current.folder === f.folder && current.name === f.name ? 'active' : ''}" data-folder="${esc(f.folder)}" data-name="${esc(f.name)}">
+      <span class="tag ${f.folder}">${f.folder === 'clips' ? 'clip' : 'dl'}</span>
+      <span class="n" title="${esc(f.name)}">${esc(f.name)}</span>
+      <span class="muted">${fmtSize(f.size)}</span>
+      <button class="small" data-act="reveal" title="Show in Explorer">📂</button>
+      <button class="small" data-act="del" title="Delete file">🗑</button>
+    </div>`).join('') : '<div class="muted">Nothing downloaded yet.</div>';
+}
+$('#files').onclick = async e => {
+  const row = e.target.closest('.file'); if (!row) return;
+  const { folder, name } = row.dataset;
+  const act = e.target.closest('button')?.dataset.act;
+  const path = `${encodeURIComponent(folder)}/${encodeURIComponent(name)}`;
+  if (act === 'reveal') return api('POST', `/api/reveal/${path}`);
+  if (act === 'del') {
+    if (!confirm(`Delete "${name}" permanently?`)) return;
+    if (current && current.name === name && current.folder === folder) closeEditor();
+    await api('DELETE', `/api/files/${path}`); return loadFiles();
+  }
+  openEditor(folder, name);
+};
+$('#refreshFiles').onclick = loadFiles;
+loadFiles();
+
+/* ---------------- editor ---------------- */
+const video = $('#video'), tl = $('#timeline'), ov = $('#overview');
+let segs = [], selSeg = -1, markIn = null, markOut = null;
+let view = [0, 1]; // visible time window on timeline
+const dur = () => (isFinite(video.duration) && video.duration > 0) ? video.duration : 1;
+
+function closeEditor() { current = null; video.removeAttribute('src'); video.load(); $('#edBody').hidden = true; $('#empty').hidden = false; $('#edTitle').textContent = 'Editor'; $('#edInfo').textContent = ''; }
+async function openEditor(folder, name) {
+  if (segs.length && !(current && current.name === name) && !confirm('Discard the current segments and open a different file?')) return;
+  if (!(current && current.name === name && current.folder === folder)) { segs = []; selSeg = -1; markIn = markOut = null; }
+  current = { folder, name };
+  $('#empty').hidden = true; $('#edBody').hidden = false;
+  $('#edTitle').textContent = name; $('#edInfo').textContent = '';
+  $('#outName').value = '';
+  video.src = `/media/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`;
+  loadFiles(); renderSegs();
+  try {
+    const p = await api('GET', `/api/probe/${encodeURIComponent(folder)}/${encodeURIComponent(name)}`);
+    const v = (p.streams || []).find(s => s.codec_type === 'video'), a = (p.streams || []).find(s => s.codec_type === 'audio');
+    $('#edInfo').textContent = [v && `${v.width}×${v.height} ${v.codec_name}`, a && a.codec_name, p.format && fmt(+p.format.duration, false)].filter(Boolean).join(' · ');
+    if (v && /hevc|h265/i.test(v.codec_name)) toast('This video is HEVC/H.265 and may not play in the browser. Use Precise mode, which converts to H.264.');
+  } catch { }
+}
+video.addEventListener('loadedmetadata', () => { view = [0, dur()]; render(); });
+video.addEventListener('error', () => { if (current) toast("The browser can't play this file's format. Exporting with Precise mode still works.", true); });
+video.addEventListener('timeupdate', () => { followHead(); render(); });
+video.addEventListener('seeked', render);
+
+function followHead() {
+  const t = video.currentTime, w = view[1] - view[0];
+  if (!video.paused && (t > view[1] || t < view[0])) { view = clampView([t - w * 0.1, t + w * 0.9]); }
+}
+function clampView([a, b]) {
+  const D = dur(), w = Math.min(Math.max(b - a, Math.min(2, D)), D);
+  a = Math.max(0, Math.min(a, D - w)); return [a, a + w];
+}
+const tToX = t => (t - view[0]) / (view[1] - view[0]) * tl.clientWidth;
+const xToT = x => view[0] + x / tl.clientWidth * (view[1] - view[0]);
+
+function render() {
+  if (!current) return;
+  const W = tl.clientWidth, span = view[1] - view[0];
+  const steps = [0.1, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+  const step = steps.find(s => W / (span / s) >= 80) || 7200;
+  let html = '';
+  for (let t = Math.ceil(view[0] / step) * step; t <= view[1]; t += step)
+    html += `<div class="tick" style="left:${tToX(t)}px">${fmt(t, step < 1).replace(/^0:/, '')}</div>`;
+  segs.forEach((s, i) => {
+    const x1 = tToX(s.start), x2 = tToX(s.end);
+    if (x2 >= 0 && x1 <= W) html += `<div class="seg ${i === selSeg ? 'sel' : ''}" style="left:${x1}px;width:${Math.max(2, x2 - x1)}px"></div>`;
+  });
+  if (markIn != null && markOut != null && markOut > markIn) html += `<div class="pending" style="left:${tToX(markIn)}px;width:${tToX(markOut) - tToX(markIn)}px"></div>`;
+  if (markIn != null) html += `<div class="mark" style="left:${tToX(markIn)}px"></div>`;
+  if (markOut != null) html += `<div class="mark" style="left:${tToX(markOut)}px;background:var(--err)"></div>`;
+  html += `<div class="head" style="left:${tToX(video.currentTime)}px"></div>`;
+  tl.innerHTML = html;
+  const D = dur();
+  ov.querySelector('.win').style.cssText = `left:${view[0] / D * 100}%;width:${(view[1] - view[0]) / D * 100}%`;
+  ov.querySelector('.ohead').style.left = `${video.currentTime / D * 100}%`;
+  $('#curTime').textContent = fmt(video.currentTime) + ' / ' + fmt(D, false);
+  $('#pendingLbl').textContent = (markIn != null ? 'In ' + fmt(markIn) : '') + (markOut != null ? '  Out ' + fmt(markOut) : '');
+}
+window.addEventListener('resize', render);
+
+// timeline interaction: drag to seek, wheel to zoom
+let dragging = false;
+const seekAt = e => { const r = tl.getBoundingClientRect(); video.currentTime = Math.max(0, Math.min(dur(), xToT(e.clientX - r.left))); render(); };
+tl.addEventListener('mousedown', e => { dragging = true; seekAt(e); });
+window.addEventListener('mousemove', e => { if (dragging) seekAt(e); });
+window.addEventListener('mouseup', () => dragging = false);
+function zoom(factor, centerT) {
+  const [a, b] = view, c = centerT ?? video.currentTime;
+  view = clampView([c - (c - a) * factor, c + (b - c) * factor]); render();
+}
+tl.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = tl.getBoundingClientRect();
+  if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { // pan
+    const w = view[1] - view[0]; const d = (e.deltaX || e.deltaY) / tl.clientWidth * w;
+    view = clampView([view[0] + d, view[1] + d]); render();
+  } else zoom(e.deltaY > 0 ? 1.25 : 0.8, xToT(e.clientX - r.left));
+}, { passive: false });
+ov.addEventListener('mousedown', e => {
+  const r = ov.getBoundingClientRect(), t = (e.clientX - r.left) / r.width * dur(), w = view[1] - view[0];
+  view = clampView([t - w / 2, t + w / 2]); video.currentTime = t; render();
+});
+$('#zoomFit').onclick = () => { view = [0, dur()]; render(); };
+$('#zoomIn').onclick = () => zoom(0.5);
+$('#zoomOut').onclick = () => zoom(2);
+
+// marks & segments
+function setIn() { markIn = video.currentTime; if (markOut != null && markOut <= markIn) markOut = null; render(); }
+function setOut() { markOut = video.currentTime; if (markIn != null && markIn >= markOut) markIn = null; render(); }
+function addSeg() {
+  const a = markIn ?? 0, b = markOut ?? video.currentTime;
+  if (b - a < 0.05) return toast('Set an In point and then a later Out point first', true);
+  segs.push({ start: a, end: b }); segs.sort((x, y) => x.start - y.start);
+  markIn = markOut = null; selSeg = -1; renderSegs();
+}
+$('#btnIn').onclick = setIn; $('#btnOut').onclick = setOut; $('#btnAdd').onclick = addSeg;
+
+let previewEnd = null;
+video.addEventListener('timeupdate', () => { if (previewEnd != null && video.currentTime >= previewEnd) { video.pause(); previewEnd = null; } });
+
+function renderSegs() {
+  $('#noSegs').hidden = segs.length > 0;
+  const total = segs.reduce((a, s) => a + s.end - s.start, 0);
+  $('#segTotal').textContent = segs.length ? `${segs.length} segment(s) · total ${fmt(total, false)}` : '';
+  $('#segRows').innerHTML = segs.map((s, i) => `
+    <tr class="${i === selSeg ? 'sel' : ''}" data-i="${i}">
+      <td class="muted">#${i + 1}</td>
+      <td><input data-k="start" value="${fmt(s.start)}"> <button class="small" data-act="setstart" title="Set start to playhead">⤓</button></td>
+      <td>→</td>
+      <td><input data-k="end" value="${fmt(s.end)}"> <button class="small" data-act="setend" title="Set end to playhead">⤓</button></td>
+      <td class="muted timebox">${fmt(s.end - s.start, false)}</td>
+      <td style="text-align:right">
+        <button class="small" data-act="go">Go</button>
+        <button class="small" data-act="play">▶ Preview</button>
+        <button class="small" data-act="del">✕</button>
+      </td>
+    </tr>`).join('');
+  render();
+}
+$('#segRows').addEventListener('click', e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const i = +tr.dataset.i, s = segs[i], act = e.target.closest('button')?.dataset.act;
+  if (act === 'del') { segs.splice(i, 1); selSeg = -1; return renderSegs(); }
+  if (act === 'setstart' && video.currentTime < s.end) s.start = video.currentTime;
+  if (act === 'setend' && video.currentTime > s.start) s.end = video.currentTime;
+  if (act === 'go') video.currentTime = s.start;
+  if (act === 'play') { video.currentTime = s.start; previewEnd = s.end; video.play(); }
+  if (act && ['go', 'play'].includes(act)) { const w = Math.max((s.end - s.start) * 1.4, 10); view = clampView([s.start - w * 0.15, s.start + w * 0.85]); }
+  selSeg = i; renderSegs();
+});
+$('#segRows').addEventListener('change', e => {
+  const inp = e.target.closest('input[data-k]'); if (!inp) return;
+  const i = +inp.closest('tr').dataset.i, t = parseTime(inp.value);
+  if (t == null || Number.isNaN(t)) { toast('Invalid time', true); return renderSegs(); }
+  const s = { ...segs[i], [inp.dataset.k]: Math.min(t, dur()) };
+  if (s.end - s.start < 0.05) { toast('End must be after start', true); return renderSegs(); }
+  segs[i] = s; renderSegs();
+});
+
+// keyboard shortcuts
+const FRAME = 1 / 30;
+document.addEventListener('keydown', e => {
+  if (!current || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  const seek = d => { video.currentTime = Math.max(0, Math.min(dur(), video.currentTime + d)); };
+  const handled = {
+    ' ': () => video.paused ? video.play() : video.pause(),
+    'i': setIn, 'o': setOut, 'a': addSeg,
+    'arrowleft': () => seek(e.shiftKey ? -60 : -5), 'arrowright': () => seek(e.shiftKey ? 60 : 5),
+    ',': () => { video.pause(); seek(-FRAME); }, '.': () => { video.pause(); seek(FRAME); },
+    'j': () => { video.playbackRate = Math.max(0.25, video.playbackRate / 2); toast('Speed ' + video.playbackRate + '×'); },
+    'k': () => { video.playbackRate = 1; video.pause(); },
+    'l': () => { video.playbackRate = Math.min(16, video.paused ? 1 : video.playbackRate * 2); video.play(); toast('Speed ' + video.playbackRate + '×'); },
+    'delete': () => { if (selSeg >= 0) { segs.splice(selSeg, 1); selSeg = -1; renderSegs(); } },
+  }[k];
+  if (handled) { e.preventDefault(); if (document.activeElement === video) video.blur(); handled(); render(); }
+});
+
+// export
+document.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => $('#preciseOpts').hidden = r.value !== 'precise' || !r.checked);
+$('#exportBtn').onclick = async () => {
+  if (!segs.length) return toast('Add at least one segment first', true);
+  try {
+    await api('POST', '/api/cut', {
+      folder: current.folder, name: current.name, segments: segs,
+      mode: document.querySelector('input[name=mode]:checked').value,
+      merge: $('#merge').checked, name_out: $('#outName').value.trim() || null,
+      crf: +$('#crf').value, preset: $('#preset').value,
+    });
+    toast('Export started. Progress is shown under Jobs.'); pollJobs();
+  } catch (e) { toast(e.message, true); }
+};
+$('#quitBtn').onclick = async () => {
+  const jobs = await api('GET', '/api/jobs').catch(() => []);
+  const busy = jobs.filter(j => ['queued', 'running'].includes(j.status)).length;
+  if (!confirm(busy ? `${busy} job(s) are still running. Quit anyway? (Downloads can be resumed later.)` : 'Quit Vid Downloader?')) return;
+  segs = [];
+  await api('POST', '/api/shutdown').catch(() => {});
+  document.body.innerHTML = '<div style="padding:60px;text-align:center;color:#8b919c">Vid Downloader has stopped. Use the desktop shortcut to start it again. You can close this tab.</div>';
+};
+window.addEventListener('beforeunload', e => { if (segs.length) { e.preventDefault(); e.returnValue = ''; } });
+</script>
+</body>
+</html>
